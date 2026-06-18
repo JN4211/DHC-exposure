@@ -1,0 +1,40 @@
+name: FC26 ProClubs Match Checker
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'   # 5分おきに自動実行
+  workflow_dispatch:         # GitHubの画面から手動実行も可能
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install aiohttp
+
+      - name: Run match checker
+        env:
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          CLUB_ID:     ${{ secrets.CLUB_ID }}
+          PLATFORM:    common-gen5
+        run: python proclubs_check.py
+
+      - name: Save state
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add state.json
+          git diff --staged --quiet || git commit -m "chore: update match state [skip ci]"
+          git push
