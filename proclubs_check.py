@@ -1,7 +1,5 @@
 """
-FC26 ProClubs Match Checker
-試合結果が更新されるたびに全件をDiscordに投稿する
-GitHub Actionsが5分おきに自動実行する
+FC26 ProClubs Match Checker（GitHub Actions版・複数試合対応）
 """
 
 import asyncio
@@ -14,9 +12,17 @@ from datetime import datetime
 EA_API_BASE = "https://proclubs.ea.com/api/fc"
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-    "Referer":    "https://www.ea.com/",
-    "Accept":     "application/json",
+    "authority":          "proclubs.ea.com",
+    "accept":             "application/json, text/plain, */*",
+    "accept-language":    "en-US,en;q=0.9",
+    "sec-ch-ua":          '"Google Chrome";v="131", "Not?A_Brand";v="8", "Chromium";v="131"',
+    "sec-ch-ua-mobile":   "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    "sec-fetch-dest":     "empty",
+    "sec-fetch-mode":     "cors",
+    "sec-fetch-site":     "same-site",
+    "user-agent":         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "referer":            "https://www.ea.com/",
 }
 
 RESULT_INFO = {
@@ -34,9 +40,9 @@ async def fetch_recent_matches(club_id: str, platform: str) -> list:
             url, params=params, headers=HEADERS,
             timeout=aiohttp.ClientTimeout(total=15)
         ) as resp:
+            print(f"   API応答: HTTP {resp.status}")
             if resp.status == 200:
                 return await resp.json()
-            print(f"⚠️ APIエラー: HTTP {resp.status}")
             return []
 
 
@@ -124,14 +130,12 @@ async def main() -> None:
         print("試合データなし / APIエラー")
         return
 
-    # 初回実行：記録のみ、投稿しない
     if last_match_id is None:
         latest_id = matches[0].get("matchId", "")
         state_path.write_text(json.dumps({"last_match_id": latest_id}))
         print("📌 初回実行：最新試合IDを記録しました（次回から投稿開始）")
         return
 
-    # 前回以降の新試合をすべて抽出（APIは新しい順で返す）
     new_matches = []
     for match in matches:
         if match.get("matchId") == last_match_id:
@@ -144,13 +148,11 @@ async def main() -> None:
 
     print(f"🎮 {len(new_matches)} 試合の新着を検知！")
 
-    # 古い順（時系列順）に投稿
     for match in reversed(new_matches):
         embed = build_embed(match, club_id)
         await post_to_discord(webhook_url, embed)
         await asyncio.sleep(1)
 
-    # 最新の試合IDで更新
     new_last_id = matches[0].get("matchId", "")
     state_path.write_text(json.dumps({"last_match_id": new_last_id}))
     print(f"💾 state.json 更新: {new_last_id}")
